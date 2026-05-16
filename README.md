@@ -1,6 +1,6 @@
 # rurl - Minimal raw URL fetcher
 
-By [Socialist Software Foundation](https://suckless.org)
+By [Socialist Software Foundation](https://codeberg.org/SocialistSofwareFoundation)
 
 Fetch a URL and pipe the raw body to stdout. Nothing more.
 
