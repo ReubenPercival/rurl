@@ -25,7 +25,8 @@ write_cb(void *data, size_t size, size_t nmemb, void *userp)
 {
 	size_t bytes = size * nmemb;
 	(void)userp;
-	fwrite(data, 1, bytes, stdout);
+	if (fwrite(data, 1, bytes, stdout) != bytes)
+		return 0;
 	return bytes;
 }
 
