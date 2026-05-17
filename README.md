@@ -7,8 +7,13 @@ Fetch a URL and pipe the raw body to stdout. Nothing more.
 ## Usage
 
 ```
-rurl URL
+rurl [-A USERAGENT] URL
 ```
+
+### Options
+
+- `-A USERAGENT`  Set custom user agent (default: rurl/1.0)
+- `-h`            Show help
 
 ## Example
 

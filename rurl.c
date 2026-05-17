@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <curl/curl.h>
 
 static size_t
@@ -37,13 +38,31 @@ main(int argc, char *argv[])
 {
 	CURL *curl;
 	CURLcode res;
+	char *useragent = "rurl/1.0";
+	int opt;
 
-	if (argc != 2) {
-		fprintf(stderr, "Usage: %s URL\n", argv[0]);
+	while ((opt = getopt(argc, argv, "A:h")) != -1) {
+		switch (opt) {
+		case 'A':
+			useragent = optarg;
+			break;
+		case 'h':
+			fprintf(stderr, "Usage: %s [-A USERAGENT] URL\n", argv[0]);
+			return 1;
+		default:
+			fprintf(stderr, "Usage: %s [-A USERAGENT] URL\n", argv[0]);
+			return 1;
+		}
+	}
+
+	if (optind >= argc) {
+		fprintf(stderr, "Usage: %s [-A USERAGENT] URL\n", argv[0]);
 		return 1;
 	}
 
-	if (!argv[1] || argv[1][0] == '\0') {
+	char *url = argv[optind];
+
+	if (!url || url[0] == '\0') {
 		fprintf(stderr, "error: empty URL\n");
 		return 1;
 	}
@@ -57,11 +76,11 @@ main(int argc, char *argv[])
 		return 1;
 	}
 
-	curl_easy_setopt(curl, CURLOPT_URL, argv[1]);
+	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
 	curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
-	curl_easy_setopt(curl, CURLOPT_USERAGENT, "rurl/1.0");
+	curl_easy_setopt(curl, CURLOPT_USERAGENT, useragent);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
 
 	res = curl_easy_perform(curl);
