@@ -54,6 +54,7 @@ main(int argc, char *argv[])
 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
 	curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
+	curl_easy_setopt(curl, CURLOPT_USERAGENT, "rurl/1.0");
 
 	res = curl_easy_perform(curl);
 
