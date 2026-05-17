@@ -25,8 +25,10 @@ write_cb(void *data, size_t size, size_t nmemb, void *userp)
 {
 	size_t bytes = size * nmemb;
 	(void)userp;
-	if (fwrite(data, 1, bytes, stdout) != bytes)
+	if (fwrite(data, 1, bytes, stdout) != bytes) {
+		fprintf(stderr, "error: failed to write to stdout\n");
 		return 0;
+	}
 	return bytes;
 }
 
