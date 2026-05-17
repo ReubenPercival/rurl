@@ -18,6 +18,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <unistd.h>
 #include <curl/curl.h>
 
@@ -33,30 +34,43 @@ write_cb(void *data, size_t size, size_t nmemb, void *userp)
 	return bytes;
 }
 
+static void
+print_usage(const char *prog)
+{
+	fprintf(stderr, "Usage: %s [-A USERAGENT] [-k] URL\n", prog);
+	fprintf(stderr, "  -A USERAGENT  Set custom User-Agent string\n");
+	fprintf(stderr, "  -k            Allow insecure SSL connections\n");
+	fprintf(stderr, "  -h            Show this help message\n");
+}
+
 int
 main(int argc, char *argv[])
 {
 	CURL *curl;
 	CURLcode res;
 	char *useragent = "rurl/1.0";
+	int insecure = 0;
 	int opt;
 
-	while ((opt = getopt(argc, argv, "A:h")) != -1) {
+	while ((opt = getopt(argc, argv, "A:kh")) != -1) {
 		switch (opt) {
 		case 'A':
 			useragent = optarg;
 			break;
+		case 'k':
+			insecure = 1;
+			break;
 		case 'h':
-			fprintf(stderr, "Usage: %s [-A USERAGENT] URL\n", argv[0]);
-			return 1;
+			print_usage(argv[0]);
+			return 0;
 		default:
-			fprintf(stderr, "Usage: %s [-A USERAGENT] URL\n", argv[0]);
+			print_usage(argv[0]);
 			return 1;
 		}
 	}
 
 	if (optind >= argc) {
-		fprintf(stderr, "Usage: %s [-A USERAGENT] URL\n", argv[0]);
+		print_usage(argv[0]);
 		return 1;
 	}
 
@@ -67,21 +81,39 @@ main(int argc, char *argv[])
 		return 1;
 	}
 
-	curl_global_init(CURL_GLOBAL_DEFAULT);
+	if (strncmp(url, "http://", 7) != 0 && strncmp(url, "https://", 8) != 0) {
+		fprintf(stderr, "error: URL must start with http:// or https://\n");
+		return 1;
+	}
+
+	res = curl_global_init(CURL_GLOBAL_DEFAULT);
+	if (res != CURLE_OK) {
+		fprintf(stderr, "error: curl_global_init failed: %s\n", curl_easy_strerror(res));
+		return 1;
+	}
+
 	curl = curl_easy_init();
 
 	if (!curl) {
-		fprintf(stderr, "curl_easy_init failed\n");
+		fprintf(stderr, "error: curl_easy_init failed\n");
 		curl_global_cleanup();
 		return 1;
 	}
 
 	curl_easy_setopt(curl, CURLOPT_URL, url);
 	curl_easy_setopt(curl, CURLOPT_FOLLOWLOCATION, 1L);
+	curl_easy_setopt(curl, CURLOPT_MAXREDIRS, 20L);
+	curl_easy_setopt(curl, CURLOPT_REDIR_PROTOCOLS_STR, "http,https");
+	curl_easy_setopt(curl, CURLOPT_PROTOCOLS_STR, "http,https");
 	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
 	curl_easy_setopt(curl, CURLOPT_FAILONERROR, 1L);
 	curl_easy_setopt(curl, CURLOPT_USERAGENT, useragent);
 	curl_easy_setopt(curl, CURLOPT_TIMEOUT, 30L);
+
+	if (insecure) {
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
+		curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
+	}
 
 	res = curl_easy_perform(curl);
 
