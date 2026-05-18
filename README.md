@@ -4,16 +4,21 @@ By [Socialist Software Foundation](https://codeberg.org/SocialistSofwareFoundati
 
 Fetch a URL and pipe the raw body to stdout. Nothing more.
 
+Built with raw sockets + OpenSSL (no libcurl).
+
 ## Usage
 
 ```
-rurl [-A USERAGENT] URL
+rurl [-A USERAGENT] [-k] [-n MAXREDIRS] [-t TIMEOUT] URL
 ```
 
 ### Options
 
-- `-A USERAGENT`  Set custom user agent (default: rurl/1.0)
-- `-h`            Show help
+- `-A USERAGENT`  Set custom User-Agent string (default: rurl/1.0)
+- `-k`           Allow insecure SSL connections (skip certificate verification)
+- `-n MAXREDIRS` Maximum number of redirects (default: 20)
+- `-t TIMEOUT`   Timeout in seconds (default: 30)
+- `-h`           Show this help message
 
 ## Example
 
@@ -28,14 +33,14 @@ rurl https://api.github.com/users/example | jq .
 make
 ```
 
-Requires libcurl development headers. On Debian/Ubuntu:
+Requires OpenSSL development headers. On Debian/Ubuntu:
 ```sh
-sudo apt install libcurl4-openssl-dev
+sudo apt install libssl-dev
 ```
 
 On Alpine:
 ```sh
-apk add curl-dev
+apk add openssl-dev
 ```
 
 ## Install
