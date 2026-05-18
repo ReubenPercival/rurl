@@ -13,7 +13,7 @@ SRC     := rurl.c
 all: $(TARGET)
 
 $(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $@ $< -lcurl $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ $< -lssl -lcrypto $(LDFLAGS)
 
 clean:
 	rm -f $(TARGET)
