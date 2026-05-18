@@ -14,11 +14,12 @@ rurl [-A USERAGENT] [-k] [-n MAXREDIRS] [-t TIMEOUT] URL
 
 ### Options
 
-- `-A USERAGENT`  Set custom User-Agent string (default: rurl/1.0)
+- `-A USERAGENT`  Set custom User-Agent string (default: rurl/0.1.3)
 - `-k`           Allow insecure SSL connections (skip certificate verification)
 - `-n MAXREDIRS` Maximum number of redirects (default: 20)
 - `-t TIMEOUT`   Timeout in seconds (default: 30)
 - `-h`           Show this help message
+- `-V`           Show version
 
 ## Example
 

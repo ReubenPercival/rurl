@@ -36,7 +36,7 @@
 #define BUF_SIZE 8192
 #define TIMEOUT_SEC 30
 
-static char *useragent = "rurl/1.0";
+static char *useragent = "rurl/0.1.3";
 static int insecure = 0;
 static int max_redirs = MAX_REDIRS;
 static int timeout_sec = TIMEOUT_SEC;
@@ -45,12 +45,13 @@ static time_t start_time;
 static void
 print_usage(const char *prog)
 {
-	fprintf(stderr, "Usage: %s [-A USERAGENT] [-k] [-n MAXREDIRS] URL\n", prog);
-	fprintf(stderr, "  -A USERAGENT  Set custom User-Agent string\n");
+	fprintf(stderr, "Usage: %s [-A USERAGENT] [-k] [-n MAXREDIRS] [-t TIMEOUT] URL\n", prog);
+	fprintf(stderr, "  -A USERAGENT  Set custom User-Agent string (default: rurl/0.1.3)\n");
 	fprintf(stderr, "  -k            Allow insecure SSL connections\n");
 	fprintf(stderr, "  -n MAXREDIRS  Maximum redirects (default: %d)\n", MAX_REDIRS);
 	fprintf(stderr, "  -t TIMEOUT    Timeout in seconds (default: %d)\n", TIMEOUT_SEC);
 	fprintf(stderr, "  -h            Show this help message\n");
+	fprintf(stderr, "  -V            Show version\n");
 }
 
 static int
@@ -374,7 +375,7 @@ main(int argc, char *argv[])
 {
 	int opt;
 
-	while ((opt = getopt(argc, argv, "A:kn:t:h")) != -1) {
+	while ((opt = getopt(argc, argv, "A:kn:t:hV")) != -1) {
 		switch (opt) {
 		case 'A':
 			useragent = optarg;
@@ -392,6 +393,9 @@ main(int argc, char *argv[])
 			break;
 		case 'h':
 			print_usage(argv[0]);
+			return 0;
+		case 'V':
+			fprintf(stderr, "rurl 0.1.3\n");
 			return 0;
 		default:
 			print_usage(argv[0]);
