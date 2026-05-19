@@ -98,6 +98,7 @@ parse_url(const char *url, char **host, char **port, char **path, int *is_ssl)
 	} else {
 		*port = *is_ssl ? strdup("443") : strdup("80");
 	}
+	if (!*port) { free(*host); return -1; }
 
 	*path = malloc(path_len + 1);
 	if (!*path) { free(*host); free(*port); return -1; }
@@ -221,6 +222,7 @@ parse_status(const char *buf, int *code, char **location)
 		*location = NULL;
 		if (*code >= 300 && *code < 400) {
 			const char *loc = strstr(buf, "Location:");
+			if (!loc) loc = strstr(buf, "location:");
 			if (loc) {
 				loc += 9;
 				while (*loc == ' ' || *loc == '\t') loc++;
