@@ -338,12 +338,15 @@ fetch_url(const char *url, int depth)
 		goto done;
 	}
 
+	char saved = read_buf[header_end];
 	read_buf[header_end] = '\0';
 
 	if (parse_status(read_buf, &code, &location) < 0) {
 		fprintf(stderr, "error: failed to parse HTTP status\n");
 		goto done;
 	}
+
+	read_buf[header_end] = saved;
 
 	size_t body_len = buf_len - header_end;
 	if (fwrite(read_buf + header_end, 1, body_len, stdout) != body_len) {
