@@ -22,8 +22,7 @@
 #include <unistd.h>
 #include <errno.h>
 #include <fcntl.h>
-#include <signal.h>
-#include <time.h>
+#include <sys/time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netdb.h>
@@ -40,7 +39,6 @@ static char *useragent = "rurl/0.1.3";
 static int insecure = 0;
 static int max_redirs = MAX_REDIRS;
 static int timeout_sec = TIMEOUT_SEC;
-static time_t start_time;
 
 static void
 print_usage(const char *prog)
@@ -91,12 +89,28 @@ parse_url(const char *url, char **host, char **port, char **path, int *is_ssl)
 	memcpy(*host, host_start, host_len);
 	(*host)[host_len] = '\0';
 
-	char *colon = strchr(*host, ':');
-	if (colon) {
-		*port = strdup(colon + 1);
-		*colon = '\0';
+	char *colon;
+	if ((*host)[0] == '[') {
+		char *close_bracket = strchr(*host, ']');
+		if (close_bracket) {
+			colon = strchr(close_bracket, ':');
+			if (colon) {
+				*port = strdup(colon + 1);
+				*colon = '\0';
+			} else {
+				*port = *is_ssl ? strdup("443") : strdup("80");
+			}
+		} else {
+			*port = *is_ssl ? strdup("443") : strdup("80");
+		}
 	} else {
-		*port = *is_ssl ? strdup("443") : strdup("80");
+		colon = strchr(*host, ':');
+		if (colon) {
+			*port = strdup(colon + 1);
+			*colon = '\0';
+		} else {
+			*port = *is_ssl ? strdup("443") : strdup("80");
+		}
 	}
 	if (!*port) { free(*host); return -1; }
 
@@ -115,13 +129,24 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 	int sock = -1;
 	SSL *ssl = NULL;
 	SSL_CTX *ctx = NULL;
+	char strip_host[256];
+	const char *lookup = host;
+
+	if (host[0] == '[') {
+		size_t hlen = strlen(host);
+		if (hlen > 2 && host[hlen-1] == ']') {
+			memcpy(strip_host, host + 1, hlen - 2);
+			strip_host[hlen - 2] = '\0';
+			lookup = strip_host;
+		}
+	}
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 	hints.ai_protocol = IPPROTO_TCP;
 
-	if (getaddrinfo(host, port, &hints, &result) != 0) {
+	if (getaddrinfo(lookup, port, &hints, &result) != 0) {
 		fprintf(stderr, "error: failed to resolve host: %s\n", host);
 		return -1;
 	}
@@ -139,6 +164,13 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 	if (sock < 0) {
 		fprintf(stderr, "error: failed to connect to %s:%s\n", host, port);
 		return -1;
+	}
+
+	{
+		struct timeval tv;
+		tv.tv_sec = timeout_sec;
+		tv.tv_usec = 0;
+		setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 	}
 
 	if (is_ssl) {
@@ -160,6 +192,7 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 		}
 
 		SSL_set_fd(ssl, sock);
+		SSL_set_tlsext_host_name(ssl, lookup);
 
 		if (insecure) {
 			SSL_set_verify(ssl, SSL_VERIFY_NONE, NULL);
@@ -180,8 +213,8 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 static int
 send_request(int sock, SSL *ssl, const char *host, const char *path)
 {
-	char buf[1024];
-	int len;
+	char buf[4096];
+	int len, total, n;
 
 	len = snprintf(buf, sizeof(buf),
 		"GET %s HTTP/1.1\r\n"
@@ -191,10 +224,17 @@ send_request(int sock, SSL *ssl, const char *host, const char *path)
 		"\r\n",
 		path, host, useragent);
 
-	if (ssl) {
-		if (SSL_write(ssl, buf, len) <= 0) return -1;
-	} else {
-		if (send(sock, buf, len, 0) <= 0) return -1;
+	if (len < 0 || (size_t)len >= sizeof(buf)) return -1;
+
+	total = 0;
+	while (total < len) {
+		if (ssl) {
+			n = SSL_write(ssl, buf + total, len - total);
+		} else {
+			n = (int)send(sock, buf + total, len - total, 0);
+		}
+		if (n <= 0) return -1;
+		total += n;
 	}
 
 	return 0;
@@ -221,19 +261,33 @@ parse_status(const char *buf, int *code, char **location)
 	if (location) {
 		*location = NULL;
 		if (*code >= 300 && *code < 400) {
-			const char *loc = strstr(buf, "Location:");
-			if (!loc) loc = strstr(buf, "location:");
-			if (loc) {
-				loc += 9;
-				while (*loc == ' ' || *loc == '\t') loc++;
-				const char *end = loc;
-				while (*end && *end != '\r' && *end != '\n') end++;
-				size_t len = end - loc;
-				*location = malloc(len + 1);
-				if (*location) {
-					memcpy(*location, loc, len);
-					(*location)[len] = '\0';
+			const char *line = buf;
+			while (*line) {
+				const char *nl = strchr(line, '\n');
+				if (!nl) break;
+				const char *hdr = nl + 1;
+				if ((hdr[0] == 'L' || hdr[0] == 'l') &&
+				    (hdr[1] == 'O' || hdr[1] == 'o') &&
+				    (hdr[2] == 'C' || hdr[2] == 'c') &&
+				    (hdr[3] == 'A' || hdr[3] == 'a') &&
+				    (hdr[4] == 'T' || hdr[4] == 't') &&
+				    (hdr[5] == 'I' || hdr[5] == 'i') &&
+				    (hdr[6] == 'O' || hdr[6] == 'o') &&
+				    (hdr[7] == 'N' || hdr[7] == 'n') &&
+				    hdr[8] == ':') {
+					hdr += 9;
+					while (*hdr == ' ' || *hdr == '\t') hdr++;
+					const char *val_end = hdr;
+					while (*val_end && *val_end != '\r' && *val_end != '\n') val_end++;
+					size_t len = val_end - hdr;
+					*location = malloc(len + 1);
+					if (*location) {
+						memcpy(*location, hdr, len);
+						(*location)[len] = '\0';
+					}
+					break;
 				}
+				line = hdr;
 			}
 		}
 	}
@@ -280,8 +334,6 @@ fetch_url(const char *url, int depth)
 		return -1;
 	}
 
-	start_time = time(NULL);
-
 	sock = connect_host(host, port, is_ssl, &ssl);
 	if (sock < 0) {
 		goto done;
@@ -312,12 +364,8 @@ fetch_url(const char *url, int depth)
 
 		if (n < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
-				if (time(NULL) - start_time > timeout_sec) {
-					fprintf(stderr, "error: timeout after %d seconds\n", timeout_sec);
-					goto done;
-				}
-				usleep(10000);
-				continue;
+				fprintf(stderr, "error: timeout after %d seconds\n", timeout_sec);
+				goto done;
 			}
 			break;
 		}
@@ -349,18 +397,20 @@ fetch_url(const char *url, int depth)
 	read_buf[header_end] = saved;
 
 	size_t body_len = buf_len - header_end;
-	if (fwrite(read_buf + header_end, 1, body_len, stdout) != body_len) {
-		fprintf(stderr, "error: failed to write to stdout\n");
-		goto done;
-	}
 
-	if (code >= 200 && code < 300) {
-		ret = 0;
-	} else if (code >= 300 && code < 400 && location) {
+	if (code >= 300 && code < 400 && location) {
 		ret = fetch_url(location, depth + 1);
 	} else {
-		fprintf(stderr, "error: HTTP %d\n", code);
-		ret = 1;
+		if (fwrite(read_buf + header_end, 1, body_len, stdout) != body_len) {
+			fprintf(stderr, "error: failed to write to stdout\n");
+			goto done;
+		}
+		if (code >= 200 && code < 300) {
+			ret = 0;
+		} else {
+			fprintf(stderr, "error: HTTP %d\n", code);
+			ret = 1;
+		}
 	}
 
 done:
