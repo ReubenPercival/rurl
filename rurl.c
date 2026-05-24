@@ -32,6 +32,7 @@
 #include <openssl/err.h>
 
 #define MAX_REDIRS 20
+#define RURL_VERSION "0.1.3"
 #define BUF_SIZE 8192
 #define TIMEOUT_SEC 30
 
@@ -125,6 +126,12 @@ parse_url(const char *url, char **host, char **port, char **path, int *is_ssl)
 static int
 connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 {
+    static int ssl_initialized = 0;
+    if (!ssl_initialized) {
+        SSL_library_init();
+        SSL_load_error_strings();
+        ssl_initialized = 1;
+    }
 	struct addrinfo hints, *result, *rp;
 	int sock = -1;
 	SSL *ssl = NULL;
@@ -266,15 +273,7 @@ parse_status(const char *buf, int *code, char **location)
 				const char *nl = strchr(line, '\n');
 				if (!nl) break;
 				const char *hdr = nl + 1;
-				if ((hdr[0] == 'L' || hdr[0] == 'l') &&
-				    (hdr[1] == 'O' || hdr[1] == 'o') &&
-				    (hdr[2] == 'C' || hdr[2] == 'c') &&
-				    (hdr[3] == 'A' || hdr[3] == 'a') &&
-				    (hdr[4] == 'T' || hdr[4] == 't') &&
-				    (hdr[5] == 'I' || hdr[5] == 'i') &&
-				    (hdr[6] == 'O' || hdr[6] == 'o') &&
-				    (hdr[7] == 'N' || hdr[7] == 'n') &&
-				    hdr[8] == ':') {
+if (strncasecmp(hdr, "Location:", 9) == 0) {
 					hdr += 9;
 					while (*hdr == ' ' || *hdr == '\t') hdr++;
 					const char *val_end = hdr;
