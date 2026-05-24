@@ -32,7 +32,7 @@
 #include <openssl/err.h>
 
 #define MAX_REDIRS 20
-#define RURL_VERSION "0.1.3"
+#define RURL_VERSION "0.1.4"
 #define BUF_SIZE 8192
 #define TIMEOUT_SEC 30
 
