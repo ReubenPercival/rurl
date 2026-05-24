@@ -36,7 +36,7 @@
 #define BUF_SIZE 8192
 #define TIMEOUT_SEC 30
 
-static char *useragent = "rurl/0.1.3";
+static char *useragent = "rurl/0.1.3"; // default, may be overridden with strdup
 static int insecure = 0;
 static int max_redirs = MAX_REDIRS;
 static int timeout_sec = TIMEOUT_SEC;
@@ -180,10 +180,8 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 		setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
 	}
 
-	if (is_ssl) {
-		SSL_library_init();
-		SSL_load_error_strings();
-		ctx = SSL_CTX_new(TLS_client_method());
+if (is_ssl) {
+        ctx = SSL_CTX_new(TLS_client_method());
 		if (!ctx) {
 			close(sock);
 			fprintf(stderr, "error: SSL_CTX_new failed\n");
@@ -449,7 +447,7 @@ main(int argc, char *argv[])
 			print_usage(argv[0]);
 			return 0;
 		case 'V':
-			fprintf(stderr, "rurl 0.1.3\n");
+			fprintf(stderr, "rurl %s\n", RURL_VERSION);
 			return 0;
 		default:
 			print_usage(argv[0]);
