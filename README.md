@@ -1,32 +1,33 @@
-# rurl – Minimal raw URL fetcher
+# rurl – Minimal Raw URL Fetcher
 
 ![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
 
-**rurl** is a tiny command‑line utility that fetches a URL and writes the raw response body to *stdout*. It uses only raw sockets and OpenSSL – no external HTTP libraries.
+`rurl` is a tiny, self-contained command-line utility that fetches a URL and writes the raw response body to *stdout*. It is implemented directly using raw POSIX sockets and native OpenSSL functions—avoiding heavy dependency footprints like `libcurl`.
 
 ---
 
 ## Features
 
-- Small, self‑contained binary (~20 KB on Linux)
-- Supports HTTP and HTTPS
-- Customisable User‑Agent string
-- Configurable maximum redirects and timeout
-- Optional insecure mode to skip TLS verification
+- **Extremely Small**: ~20 KB lightweight binary on typical Linux distributions.
+- **Protocols**: Seamlessly handles both custom `http://` and secure `https://` URLs.
+- **Configurable**: Define custom User-Agents, maximum redirect rules, and connection timeouts.
+- **Testing-Friendly**: Optional insecure mode (`-k`) allows skipping certificate verification when testing local/self-signed deployments.
 
 ---
 
 ## Installation
 
+Ensure you have a C compiler and OpenSSL headers installed before building.
+
 ```sh
 # Build the binary
 make
 
-# Install system‑wide (requires root)
+# Install globally (requires administrative/root privileges)
 sudo make install
 ```
 
-The binary is installed to **/usr/local/bin/rurl**.
+The binary is installed to **/usr/local/bin/rurl** by default.
 
 ---
 
@@ -36,48 +37,54 @@ The binary is installed to **/usr/local/bin/rurl**.
 rurl [-A USERAGENT] [-k] [-n MAXREDIRS] [-t TIMEOUT] URL
 ```
 
-### Options
+### Options Reference
 
-| Flag | Description |
-|------|-------------|
-| `-A USERAGENT` | Set a custom *User‑Agent* string (default: `rurl/0.1.3`) |
-| `-k` | Allow insecure SSL connections (skip certificate verification) |
-| `-n MAXREDIRS` | Maximum number of redirects (default: 20) |
-| `-t TIMEOUT` | Timeout in seconds (default: 30) |
-| `-h` | Show help message |
-| `-V` | Show version |
+| Flag | Argument | Default | Description |
+| :--- | :--- | :--- | :--- |
+| `-A` | `USERAGENT` | `rurl/0.1.3` | Set a custom HTTP *User-Agent* request header. |
+| `-k` | *(None)* | Disabled | Allow insecure SSL connections (skips certificate verification). |
+| `-n` | `MAXREDIRS` | `20` | Set the maximum limit for HTTP redirects to follow. |
+| `-t` | `TIMEOUT` | `30` | Socket timeout duration in seconds. |
+| `-h` | *(None)* | - | Show a brief help message with available flags and exit. |
+| `-V` | *(None)* | - | Show the current version of `rurl` and exit. |
 
-### Examples
+### Practical Examples
 
 ```sh
-# Simple GET request
+# Perform a simple GET request
 rurl https://example.com
 
-# Pipe JSON output to jq
-rurl https://api.github.com/users/example | jq .
+# Pipeline API payloads to json processing utilities
+rurl https://api.github.com/users/ReubenPercival | jq .
+
+# Overriding request parameters
+rurl -A "MyCustomCrawler/1.0" -t 5 -n 3 https://example.com
 ```
 
 ---
 
-## Build requirements
+## Build Prerequisites
 
-- **gcc** (or compatible C compiler)
-- OpenSSL development headers
+To compile the codebase successfully, your environment requires a C compiler and the OpenSSL development files:
 
-On Debian/Ubuntu:
+- **Debian / Ubuntu**: `sudo apt install build-essential libssl-dev`
+- **Alpine Linux**: `apk add build-base openssl-dev`
+- **macOS**: `brew install openssl`
 
-```sh
-sudo apt install build-essential libssl-dev
-```
+---
 
-On Alpine Linux:
+## Detailed Documentation
 
-```sh
-apk add build-base openssl-dev
-```
+More comprehensive guides and resources can be found in our dedicated [documentation/](documentation/) folder:
+
+- [BUILDING.md](documentation/BUILDING.md) – Thorough compiler setups and troubleshooting.
+- [USAGE.md](documentation/USAGE.md) – Full CLI options, parameters, and examples.
+- [CONTRIBUTING.md](documentation/CONTRIBUTING.md) – Contribution pathways, coding standards, and developer guide.
+- [CHANGELOG.md](documentation/CHANGELOG.md) – Release iterations, version updates, and history.
+- [LICENSE.md](documentation/LICENSE.md) – GPL-3.0 licensing details.
 
 ---
 
 ## License
 
-GPL‑3.0‑only. See the [LICENSE](LICENSE) file for details.
+This project is licensed under the GPL-3.0 License. See the [LICENSE](LICENSE) file for the complete license text.

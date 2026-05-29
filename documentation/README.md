@@ -1,29 +1,56 @@
-# rurl – Minimal raw URL fetcher
+# rurl – Minimal Raw URL Fetcher
 
-`rurl` is a tiny command‑line HTTP/HTTPS client that performs a raw GET request without pulling in libcurl. It supports:
+`rurl` is a tiny, self-contained command-line HTTP/HTTPS client. Designed to be fast and lightweight, it performs raw GET requests using raw sockets and OpenSSL without the weight of larger HTTP libraries like `libcurl`.
 
-- Custom User‑Agent (`-A`)
-- Insecure SSL (`-k`)
-- Redirect handling (`-n` to set max redirects)
-- Connection timeout (`-t`)
-- Verbose error messages
+## Key Features
 
-## Building
+- **Tiny Binary**: Under ~20 KB on standard Linux environments.
+- **Protocols**: Supports both `http://` and secure `https://` URLs.
+- **No External HTTP Libraries**: Built directly on POSIX sockets and native OpenSSL functions.
+- **Configurable**: Easily set custom User-Agents, maximum redirect counts, and network timeouts.
+- **Developer-Friendly**: Features an optional insecure mode (`-k`) to skip SSL/TLS certificate validation for local development or testing.
+
+---
+
+## Quick Start
+
+### Build & Install
+
+Ensure you have a C compiler and the OpenSSL development headers installed, then build:
+
 ```sh
-mkdir -p build && cd build
-cmake ..   # if a CMakeLists.txt exists, otherwise use the Makefile
 make
-```
-Or simply:
-```sh
-gcc -Wall -Wextra -o rurl rurl.c -lssl -lcrypto
+sudo make install
 ```
 
-## Usage
+For more detailed compilation instructions, see [documentation/BUILDING.md](documentation/BUILDING.md).
+
+### Basic Usage
+
+Fetch raw HTML/JSON directly to stdout:
+
 ```sh
-rurl [options] URL
+# Fetch a webpage
+rurl https://example.com
+
+# Fetch API payload and pretty-print with jq
+rurl https://api.github.com/users/ReubenPercival | jq .
 ```
-Options are listed with `-h`.
+
+For more usage patterns and flag options, see [documentation/USAGE.md](documentation/USAGE.md).
+
+---
+
+## Documentation Index
+
+- [BUILDING.md](documentation/BUILDING.md) – Compiler requirements and system installation guides.
+- [USAGE.md](documentation/USAGE.md) – CommandLine flags, switches, and usage patterns.
+- [CONTRIBUTING.md](documentation/CONTRIBUTING.md) – Contribution guidelines and project coding styles.
+- [CHANGELOG.md](documentation/CHANGELOG.md) – Feature progression and history of versions.
+- [LICENSE.md](documentation/LICENSE.md) – GPL-3.0 licensing details.
+
+---
 
 ## License
-GPL‑3.0‑or‑later – see `LICENSE`.
+
+This project is licensed under the GPL-3.0 License. See the [LICENSE](LICENSE) file for the complete license text.

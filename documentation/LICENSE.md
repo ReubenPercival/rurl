@@ -1,9 +1,5 @@
+# License
 
-                    GNU GENERAL PUBLIC LICENSE
-                       Version 3, 29 June 2007
+This project is licensed under the terms of the GNU General Public License Version 3 (GPL-3.0).
 
- Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
- Everyone is permitted to copy and distribute verbatim copies
- of this license document, but changing it is not allowed.
-
- ... (full GPL‑3.0 text omitted for brevity) 
+For the full license terms, please read the [LICENSE](../LICENSE) file located in the root directory of this repository.
