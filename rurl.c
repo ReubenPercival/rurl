@@ -39,7 +39,7 @@
 #include <openssl/err.h>
 
 #define MAX_REDIRS 20
-#define RURL_VERSION "0.1.5"
+#define RURL_VERSION "0.1.6"
 #define RURL_USERAGENT "rurl/" RURL_VERSION
 #define BUF_SIZE 8192
 #define MAX_HEADER_SIZE (64 * 1024)
@@ -58,15 +58,15 @@ typedef struct {
 } url_parts;
 
 static void
-print_usage(const char *prog)
+print_usage(FILE *out, const char *prog)
 {
-	fprintf(stderr, "Usage: %s [-A USERAGENT] [-k] [-n MAXREDIRS] [-t TIMEOUT] URL\n", prog);
-	fprintf(stderr, "  -A USERAGENT  Set custom User-Agent string (default: %s)\n", RURL_USERAGENT);
-	fprintf(stderr, "  -k            Allow insecure SSL connections\n");
-	fprintf(stderr, "  -n MAXREDIRS  Maximum redirects (default: %d)\n", MAX_REDIRS);
-	fprintf(stderr, "  -t TIMEOUT    Timeout in seconds (default: %d)\n", TIMEOUT_SEC);
-	fprintf(stderr, "  -h            Show this help message\n");
-	fprintf(stderr, "  -V            Show version\n");
+	fprintf(out, "Usage: %s [-A USERAGENT] [-k] [-n MAXREDIRS] [-t TIMEOUT] URL\n", prog);
+	fprintf(out, "  -A USERAGENT  Set custom User-Agent string (default: %s)\n", RURL_USERAGENT);
+	fprintf(out, "  -k            Allow insecure SSL connections\n");
+	fprintf(out, "  -n MAXREDIRS  Maximum redirects (default: %d)\n", MAX_REDIRS);
+	fprintf(out, "  -t TIMEOUT    Timeout in seconds (default: %d)\n", TIMEOUT_SEC);
+	fprintf(out, "  -h            Show this help message\n");
+	fprintf(out, "  -V            Show version\n");
 }
 
 static char *
@@ -99,6 +99,51 @@ concat3(const char *a, const char *b, const char *c)
 	return r;
 }
 
+static int
+http_scheme(const char *url, int *is_ssl, size_t *skip)
+{
+	if (strncasecmp(url, "http://", 7) == 0) {
+		*is_ssl = 0;
+		*skip = 7;
+		return 1;
+	}
+	if (strncasecmp(url, "https://", 8) == 0) {
+		*is_ssl = 1;
+		*skip = 8;
+		return 1;
+	}
+	return 0;
+}
+
+static int
+has_uri_scheme(const char *s)
+{
+	const char *p;
+
+	if (!isalpha((unsigned char)s[0]))
+		return 0;
+	for (p = s + 1; *p; p++) {
+		if (*p == ':')
+			return 1;
+		if (!(isalnum((unsigned char)*p) || *p == '+' ||
+		      *p == '-' || *p == '.'))
+			return 0;
+	}
+	return 0;
+}
+
+static int
+valid_header_value(const char *s)
+{
+	for (; *s; s++) {
+		unsigned char c = (unsigned char)*s;
+
+		if ((c < 0x20 && c != '\t') || c == 0x7f)
+			return 0;
+	}
+	return 1;
+}
+
 static void
 free_url_parts(url_parts *u)
 {
@@ -113,9 +158,16 @@ free_url_parts(url_parts *u)
 static int
 valid_port(const char *s)
 {
+	const char *p;
 	char *end;
 	long v;
 
+	if (!isdigit((unsigned char)*s))
+		return 0;
+	for (p = s; *p; p++) {
+		if (!isdigit((unsigned char)*p))
+			return 0;
+	}
 	errno = 0;
 	v = strtol(s, &end, 10);
 	return !(errno != 0 || end == s || *end != '\0' || v < 1 || v > 65535);
@@ -130,19 +182,14 @@ parse_url(const char *url, url_parts *u)
 	const char *at;
 	const char *c;
 	size_t host_len;
+	size_t scheme_len;
 	char *colon;
 
 	memset(u, 0, sizeof(*u));
 
-	if (strncmp(p, "http://", 7) == 0) {
-		u->is_ssl = 0;
-		p += 7;
-	} else if (strncmp(p, "https://", 8) == 0) {
-		u->is_ssl = 1;
-		p += 8;
-	} else {
+	if (!http_scheme(p, &u->is_ssl, &scheme_len))
 		return -1;
-	}
+	p += scheme_len;
 
 	/* Reject CR/LF up front: they would allow request-header injection. */
 	if (strpbrk(p, "\r\n") != NULL)
@@ -166,6 +213,11 @@ parse_url(const char *url, url_parts *u)
 		return -1;
 	memcpy(u->host, host_start, host_len);
 	u->host[host_len] = '\0';
+
+	for (c = u->host; *c; c++) {
+		if ((unsigned char)*c <= 0x20 || (unsigned char)*c == 0x7f)
+			goto fail;
+	}
 
 	if (u->host[0] == '[') {
 		char *rb = strchr(u->host, ']');
@@ -299,8 +351,9 @@ resolve_location(const url_parts *base, const char *loc)
 	char *origin;
 	char *result;
 
-	if (strncmp(loc, "http://", 7) == 0 ||
-	    strncmp(loc, "https://", 8) == 0)
+	/* Absolute URI (including unsupported schemes, which are rejected by
+	 * parse_url rather than being mistaken for relative paths). */
+	if (has_uri_scheme(loc))
 		return strdup(loc);
 
 	origin = concat3(scheme, "://", base->host);
@@ -582,19 +635,23 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 static int
 send_request(int sock, SSL *ssl, const char *host_header, const char *path)
 {
-	char buf[4096];
-	int len, total, n;
-
-	len = snprintf(buf, sizeof(buf),
+	const char *fmt =
 		"GET %s HTTP/1.1\r\n"
 		"Host: %s\r\n"
 		"User-Agent: %s\r\n"
 		"Connection: close\r\n"
-		"\r\n",
-		path, host_header, useragent);
+		"\r\n";
+	char *buf;
+	int len, total, n;
+	int rc = 0;
 
-	if (len < 0 || (size_t)len >= sizeof(buf))
+	len = snprintf(NULL, 0, fmt, path, host_header, useragent);
+	if (len < 0)
 		return -1;
+	buf = malloc((size_t)len + 1);
+	if (!buf)
+		return -1;
+	snprintf(buf, (size_t)len + 1, fmt, path, host_header, useragent);
 
 	total = 0;
 	while (total < len) {
@@ -605,19 +662,23 @@ send_request(int sock, SSL *ssl, const char *host_header, const char *path)
 
 				if (err == SSL_ERROR_SYSCALL && errno == EINTR)
 					continue;
-				return -1;
+				rc = -1;
+				break;
 			}
 		} else {
 			n = (int)send(sock, buf + total, (size_t)(len - total), 0);
 			if (n < 0 && errno == EINTR)
 				continue;
-			if (n <= 0)
-				return -1;
+			if (n <= 0) {
+				rc = -1;
+				break;
+			}
 		}
 		total += n;
 	}
 
-	return 0;
+	free(buf);
+	return rc;
 }
 
 static ssize_t
@@ -790,6 +851,8 @@ static int
 header_content_length(const char *header, size_t *out)
 {
 	const char *line = header;
+	int found = 0;
+	size_t value = 0;
 
 	while (*line) {
 		const char *nl = strchr(line, '\n');
@@ -809,7 +872,7 @@ header_content_length(const char *header, size_t *out)
 			p = hdr + 15;
 			while (p < end && (*p == ' ' || *p == '\t'))
 				p++;
-			if (p == end)
+			if (p == end || !isdigit((unsigned char)*p))
 				return -1;
 			errno = 0;
 			v = strtoull(p, &num_end, 10);
@@ -819,12 +882,19 @@ header_content_length(const char *header, size_t *out)
 				num_end++;
 			if (num_end != end || v > SIZE_MAX)
 				return -1;
-			*out = (size_t)v;
-			return 1;
+			/* Multiple differing Content-Length values are ambiguous. */
+			if (found && value != (size_t)v)
+				return -1;
+			found = 1;
+			value = (size_t)v;
 		}
 		line = hdr;
 	}
-	return 0;
+
+	if (!found)
+		return 0;
+	*out = value;
+	return 1;
 }
 
 static int
@@ -1108,6 +1178,11 @@ do_request(const url_parts *u, char **location_out)
 			goto done;
 		}
 		have_content_length = length_rc;
+		if (code == 204 || code == 304) {
+			chunked = 0;
+			have_content_length = 1;
+			content_length = 0;
+		}
 	}
 
 	if (code >= 300 && code < 400 && location && location[0] != '\0') {
@@ -1232,10 +1307,16 @@ int
 main(int argc, char *argv[])
 {
 	int opt;
+	int scheme_ssl;
+	size_t scheme_len;
 
 	while ((opt = getopt(argc, argv, "A:kn:t:hV")) != -1) {
 		switch (opt) {
 		case 'A':
+			if (!valid_header_value(optarg)) {
+				fprintf(stderr, "error: invalid User-Agent value\n");
+				return 1;
+			}
 			useragent = optarg;
 			break;
 		case 'k':
@@ -1262,19 +1343,23 @@ main(int argc, char *argv[])
 			break;
 		}
 		case 'h':
-			print_usage(argv[0]);
+			print_usage(stdout, argv[0]);
 			return 0;
 		case 'V':
-			fprintf(stderr, "rurl %s\n", RURL_VERSION);
+			fprintf(stdout, "rurl %s\n", RURL_VERSION);
 			return 0;
 		default:
-			print_usage(argv[0]);
+			print_usage(stderr, argv[0]);
 			return 1;
 		}
 	}
 
 	if (optind >= argc) {
-		print_usage(argv[0]);
+		print_usage(stderr, argv[0]);
+		return 1;
+	}
+	if (optind + 1 < argc) {
+		fprintf(stderr, "error: too many arguments\n");
 		return 1;
 	}
 
@@ -1284,7 +1369,7 @@ main(int argc, char *argv[])
 		return 1;
 	}
 
-	if (strncmp(url, "http://", 7) != 0 && strncmp(url, "https://", 8) != 0) {
+	if (!http_scheme(url, &scheme_ssl, &scheme_len)) {
 		fprintf(stderr, "error: URL must start with http:// or https://\n");
 		return 1;
 	}

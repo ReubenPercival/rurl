@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.1.6 – 2026‑11‑09
+- Reject control characters and CR/LF in the `-A` User-Agent value, and in
+  URL hosts, to prevent request-header injection.
+- Accept URL schemes case-insensitively (`HTTP://`, `HTTPS://`).
+- Reject redirects to unsupported URI schemes instead of treating them as
+  relative paths.
+- Build request lines dynamically so long URLs and User-Agent values are no
+  longer truncated at 4096 bytes.
+- Reject malformed, negative, or conflicting `Content-Length` headers.
+- Treat 204/304 responses as bodyless.
+- Reject extra positional arguments.
+- Send explicit help and version output to stdout.
+
 ## 0.1.5 – 2026‑11‑09
 - Enable TLS certificate and hostname verification by default; `-k` now
   actually disables verification.
