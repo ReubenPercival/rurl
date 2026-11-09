@@ -1,6 +1,6 @@
 # rurl – Minimal Raw URL Fetcher
 
-![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)
+![License: EUPL v1.2](https://img.shields.io/badge/License-EUPL_1.2-blue.svg)
 
 `rurl` is a tiny, self-contained command-line utility that fetches a URL and writes the raw response body to *stdout*. It is implemented directly using raw POSIX sockets and native OpenSSL functions—avoiding heavy dependency footprints like `libcurl`.
 
@@ -8,7 +8,7 @@
 
 ## Features
 
-- **Extremely Small**: ~20 KB lightweight binary on typical Linux distributions.
+- **Extremely Small**: ~27 KB lightweight binary on typical Linux distributions.
 - **Protocols**: Seamlessly handles both custom `http://` and secure `https://` URLs.
 - **Configurable**: Define custom User-Agents, maximum redirect rules, and connection timeouts.
 - **Testing-Friendly**: Optional insecure mode (`-k`) allows skipping certificate verification when testing local/self-signed deployments.
@@ -41,7 +41,7 @@ rurl [-A USERAGENT] [-k] [-n MAXREDIRS] [-t TIMEOUT] URL
 
 | Flag | Argument | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `-A` | `USERAGENT` | `rurl/0.1.3` | Set a custom HTTP *User-Agent* request header. |
+| `-A` | `USERAGENT` | `rurl/0.1.5` | Set a custom HTTP *User-Agent* request header. |
 | `-k` | *(None)* | Disabled | Allow insecure SSL connections (skips certificate verification). |
 | `-n` | `MAXREDIRS` | `20` | Set the maximum limit for HTTP redirects to follow. |
 | `-t` | `TIMEOUT` | `30` | Socket timeout duration in seconds. |
@@ -81,10 +81,10 @@ More comprehensive guides and resources can be found in our dedicated [documenta
 - [USAGE.md](documentation/USAGE.md) – Full CLI options, parameters, and examples.
 - [CONTRIBUTING.md](documentation/CONTRIBUTING.md) – Contribution pathways, coding standards, and developer guide.
 - [CHANGELOG.md](documentation/CHANGELOG.md) – Release iterations, version updates, and history.
-- [LICENSE.md](documentation/LICENSE.md) – GPL-3.0 licensing details.
+- [LICENSE.md](documentation/LICENSE.md) – EUPL-1.2 licensing details.
 
 ---
 
 ## License
 
-This project is licensed under the GPL-3.0 License. See the [LICENSE](LICENSE) file for the complete license text.
+This project is licensed under the EUPL-1.2 License. See the [LICENSE](LICENSE) file for the complete license text.

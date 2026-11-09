@@ -12,7 +12,7 @@ rurl [-A USERAGENT] [-k] [-n MAXREDIRS] [-t TIMEOUT] URL
 
 | Flag | Argument | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `-A` | `USERAGENT` | `rurl/0.1.3` | Set a custom HTTP `User-Agent` request header. |
+| `-A` | `USERAGENT` | `rurl/0.1.5` | Set a custom HTTP `User-Agent` request header. |
 | `-k` | *(None)* | Disabled | Allow insecure SSL connections (skips SSL/TLS certificate verification). |
 | `-n` | `MAXREDIRS` | `20` | Set the maximum limit for HTTP redirects to follow. |
 | `-t` | `TIMEOUT` | `30` | Socket timeout duration in seconds. |

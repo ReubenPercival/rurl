@@ -4,7 +4,7 @@
 
 ## Key Features
 
-- **Tiny Binary**: Under ~20 KB on standard Linux environments.
+- **Tiny Binary**: Under ~30 KB on standard Linux environments.
 - **Protocols**: Supports both `http://` and secure `https://` URLs.
 - **No External HTTP Libraries**: Built directly on POSIX sockets and native OpenSSL functions.
 - **Configurable**: Easily set custom User-Agents, maximum redirect counts, and network timeouts.
@@ -43,14 +43,14 @@ For more usage patterns and flag options, see [documentation/USAGE.md](documenta
 
 ## Documentation Index
 
-- [BUILDING.md](documentation/BUILDING.md) – Compiler requirements and system installation guides.
-- [USAGE.md](documentation/USAGE.md) – CommandLine flags, switches, and usage patterns.
-- [CONTRIBUTING.md](documentation/CONTRIBUTING.md) – Contribution guidelines and project coding styles.
-- [CHANGELOG.md](documentation/CHANGELOG.md) – Feature progression and history of versions.
-- [LICENSE.md](documentation/LICENSE.md) – GPL-3.0 licensing details.
+- [BUILDING.md](BUILDING.md) – Compiler requirements and system installation guides.
+- [USAGE.md](USAGE.md) – CommandLine flags, switches, and usage patterns.
+- [CONTRIBUTING.md](CONTRIBUTING.md) – Contribution guidelines and project coding styles.
+- [CHANGELOG.md](CHANGELOG.md) – Feature progression and history of versions.
+- [LICENSE.md](LICENSE.md) – EUPL-1.2 licensing details.
 
 ---
 
 ## License
 
-This project is licensed under the GPL-3.0 License. See the [LICENSE](LICENSE) file for the complete license text.
+This project is licensed under the EUPL-1.2 License. See the [LICENSE](../LICENSE) file for the complete license text.
