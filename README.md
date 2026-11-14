@@ -18,7 +18,7 @@
 ## Installation
 
 Ensure you have a C compiler and OpenSSL headers installed before building.
-
+ I Personally compile this from clang and use the latest from arch repos. 
 ```sh
 # Build the binary
 make
