@@ -7,6 +7,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## Unreleased
 
 ### Fixed
+
+- Refactor of the core rurl project out of one rurl.c file. This was to ensure the project is not a dirty mess when I get back to it. 
 - Handle informational (`1xx`) responses and reject unexpected protocol
   switches (`101`) instead of treating the first response as final.
 - Follow only the standard redirect status codes (`301`, `302`, `303`, `307`
@@ -100,4 +102,3 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## 0.1.2 – previous
 - Initial release with basic fetching, redirects, and TLS support.
-
