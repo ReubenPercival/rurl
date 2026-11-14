@@ -9,7 +9,6 @@
  */
 
 #include "rurl.h"
-
 #include <stdlib.h>
 #include <limits.h>
 #include <signal.h>

@@ -10,7 +10,6 @@
 
 #ifndef RURL_HTTP_INTERNAL_H
 #define RURL_HTTP_INTERNAL_H
-
 #include "rurl.h"
 
 #define BODY_OK 0
