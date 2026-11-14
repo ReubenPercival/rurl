@@ -40,6 +40,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Report certificate verification details when a TLS handshake fails, and
   check the return value of `SSL_set_fd`.
 - Limit the number of consecutive informational responses.
+- Build with Clang by default; Clang is now the project's standard compiler.
 
 ## 0.1.6 – 2026‑11‑09
 - Reject control characters and CR/LF in the `-A` User-Agent value, and in

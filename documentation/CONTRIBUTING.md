@@ -30,6 +30,8 @@ Thank you for your interest in contributing! We welcome bug fixes, documentation
 - **Formatting**: Indent with standard tabs (width 8) matching the existing `rurl.c` layout.
 - **Simplicity**: Keep functions focused, clean, and under 100 lines where practical.
 - **Safety**: Ensure you do not introduce memory leaks (e.g. always cleanup buffers and free structures on all error paths).
+- **Compiler**: Clang is the project standard and the default `CC` in the
+  `Makefile`. GCC is not a supported build target.
 - **Warnings**: Code must compile without warnings with `-Wall -Wextra -Wpedantic` enabled.
 - **Standard**: The source targets C11 with POSIX.1-2008 interfaces.
 - **Error paths**: Free every allocation and close every socket/SSL object on
@@ -42,7 +44,7 @@ At minimum, build with warnings as errors and run a handful of real requests:
 
 ```sh
 make clean
-make CFLAGS="-O2 -std=c11 -Wall -Wextra -Wpedantic -Werror"
+make CC=clang CFLAGS="-O2 -std=c11 -Wall -Wextra -Wpedantic -Werror"
 ./rurl https://example.com
 ./rurl -k https://localhost:8443/
 ./rurl -n 0 https://httpbin.org/redirect/1
@@ -51,7 +53,7 @@ make CFLAGS="-O2 -std=c11 -Wall -Wextra -Wpedantic -Werror"
 For memory and undefined-behavior checks:
 
 ```sh
-gcc -std=c11 -O1 -g -fsanitize=address,undefined \
+clang -std=c11 -O1 -g -fsanitize=address,undefined \
     -fno-omit-frame-pointer -o rurl-asan rurl.c -lssl -lcrypto
 ./rurl-asan https://example.com
 ```

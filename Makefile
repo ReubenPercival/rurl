@@ -1,7 +1,7 @@
 # rurl - Minimal raw URL fetcher
 # Suckless-style build: minimal, fast, small binary
 
-CC      ?= gcc
+CC      := clang
 CFLAGS  := -Wall -Wextra -Os -pedantic
 LDFLAGS := -s
 

@@ -16,7 +16,7 @@
 
 ### Build & Install
 
-Ensure you have a C compiler and the OpenSSL development headers installed, then build:
+Ensure you have Clang (the project's standard compiler) and the OpenSSL development headers installed, then build:
 
 ```sh
 make

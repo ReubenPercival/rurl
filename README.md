@@ -17,8 +17,7 @@
 
 ## Installation
 
-Ensure you have a C compiler and OpenSSL headers installed before building.
- I Personally compile this from clang and use the latest from arch repos. 
+Clang is the standard compiler for this project. Ensure you have `clang` and the OpenSSL headers installed before building.
 ```sh
 # Build the binary
 make
@@ -78,11 +77,11 @@ rurl -kt 5 https://example.com
 
 ## Build Prerequisites
 
-To compile the codebase successfully, your environment requires a C compiler and the OpenSSL development files:
+To compile the codebase successfully, your environment requires Clang (the project's standard compiler) and the OpenSSL development files:
 
-- **Debian / Ubuntu**: `sudo apt install build-essential libssl-dev`
-- **Alpine Linux**: `apk add build-base openssl-dev`
-- **macOS**: `brew install openssl`
+- **Debian / Ubuntu**: `sudo apt install clang libssl-dev`
+- **Alpine Linux**: `apk add clang openssl-dev`
+- **macOS**: `xcode-select --install` (provides Clang) and `brew install openssl`
 
 ---
 
