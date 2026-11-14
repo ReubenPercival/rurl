@@ -28,6 +28,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <signal.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/select.h>
@@ -43,6 +44,7 @@
 #define RURL_USERAGENT "rurl/" RURL_VERSION
 #define BUF_SIZE 8192
 #define MAX_HEADER_SIZE (64 * 1024)
+#define MAX_INTERIM_RESPONSES 10
 #define TIMEOUT_SEC 30
 
 static const char *useragent = RURL_USERAGENT;
@@ -67,6 +69,23 @@ print_usage(FILE *out, const char *prog)
 	fprintf(out, "  -t TIMEOUT    Timeout in seconds (default: %d)\n", TIMEOUT_SEC);
 	fprintf(out, "  -h            Show this help message\n");
 	fprintf(out, "  -V            Show version\n");
+}
+
+/*
+ * Print untrusted text without letting control characters reach the terminal.
+ * Printable non-ASCII bytes are passed through untouched.
+ */
+static void
+fprint_sanitized(FILE *out, const char *s)
+{
+	const unsigned char *p = (const unsigned char *)s;
+
+	for (; *p; p++) {
+		if (*p < 0x20 || *p == 0x7f || (*p >= 0x80 && *p <= 0x9f))
+			fprintf(out, "\\x%02x", (unsigned int)*p);
+		else
+			fputc(*p, out);
+	}
 }
 
 static char *
@@ -199,8 +218,14 @@ parse_url(const char *url, url_parts *u)
 	host_end = p + strcspn(p, "/?#");
 	host_len = (size_t)(host_end - host_start);
 
-	/* Strip optional userinfo (user:password@host). */
-	at = memchr(host_start, '@', host_len);
+	/* Strip optional userinfo (user:password@host).  Use the last '@'
+	 * so that a raw '@' in the password is not mistaken for the host
+	 * delimiter. */
+	at = NULL;
+	for (c = host_start; c < host_end; c++) {
+		if (*c == '@')
+			at = c;
+	}
 	if (at) {
 		host_start = at + 1;
 		host_len = (size_t)(host_end - host_start);
@@ -215,7 +240,8 @@ parse_url(const char *url, url_parts *u)
 	u->host[host_len] = '\0';
 
 	for (c = u->host; *c; c++) {
-		if ((unsigned char)*c <= 0x20 || (unsigned char)*c == 0x7f)
+		if ((unsigned char)*c <= 0x20 || (unsigned char)*c == 0x7f ||
+		    *c == '@')
 			goto fail;
 	}
 
@@ -309,6 +335,9 @@ normalize_url_path(char *url)
 		if (i + 2 <= len && path[i] == '/' && path[i + 1] == '.' &&
 		    (i + 2 == len || path[i + 2] == '/')) {
 			i += 2;
+			/* A trailing "/." denotes a directory; keep the slash. */
+			if (i == len && (r == 0 || result[r - 1] != '/'))
+				result[r++] = '/';
 			continue;
 		}
 		if (i + 3 <= len && path[i] == '/' && path[i + 1] == '.' &&
@@ -319,6 +348,9 @@ normalize_url_path(char *url)
 				r--;
 			if (r > 0)
 				r--;
+			/* Likewise for a trailing "/..". */
+			if (i == len && (r == 0 || result[r - 1] != '/'))
+				result[r++] = '/';
 			continue;
 		}
 		result[r++] = path[i++];
@@ -353,8 +385,12 @@ resolve_location(const url_parts *base, const char *loc)
 
 	/* Absolute URI (including unsupported schemes, which are rejected by
 	 * parse_url rather than being mistaken for relative paths). */
-	if (has_uri_scheme(loc))
-		return strdup(loc);
+	if (has_uri_scheme(loc)) {
+		result = strdup(loc);
+		if (result)
+			normalize_url_path(result);
+		return result;
+	}
 
 	origin = concat3(scheme, "://", base->host);
 	if (!origin)
@@ -492,6 +528,8 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 	SSL_CTX *ctx = NULL;
 	char *lookup = NULL;
 	const char *lookup_host = host;
+	const char *server_name;
+	char tls_host[256];
 	unsigned char addr[sizeof(struct in6_addr)];
 
 	if (host[0] == '[') {
@@ -501,17 +539,32 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 			size_t n = hlen - 2;
 
 			lookup = malloc(n + 1);
-			if (!lookup)
+			if (!lookup) {
+				fprintf(stderr, "error: out of memory\n");
 				return -1;
+			}
 			memcpy(lookup, host + 1, n);
 			lookup[n] = '\0';
 			lookup_host = lookup;
 		}
 	}
 
+	server_name = lookup_host;
+
 	if (inet_pton(AF_INET, lookup_host, addr) == 1 ||
-	    inet_pton(AF_INET6, lookup_host, addr) == 1)
+	    inet_pton(AF_INET6, lookup_host, addr) == 1) {
 		is_ip = 1;
+	} else {
+		size_t n = strlen(lookup_host);
+
+		/* A trailing dot marks an absolute DNS name.  It is not part of
+		 * the name presented to TLS or matched against a certificate. */
+		if (n > 0 && n < sizeof(tls_host) && lookup_host[n - 1] == '.') {
+			memcpy(tls_host, lookup_host, n - 1);
+			tls_host[n - 1] = '\0';
+			server_name = tls_host;
+		}
+	}
 
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_UNSPEC;
@@ -519,15 +572,19 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 	hints.ai_protocol = IPPROTO_TCP;
 
 	if (getaddrinfo(lookup_host, port, &hints, &result) != 0) {
-		fprintf(stderr, "error: failed to resolve host: %s\n", host);
+		fprintf(stderr, "error: failed to resolve host: ");
+		fprint_sanitized(stderr, host);
+		fputc('\n', stderr);
 		free(lookup);
 		return -1;
 	}
 
 	for (rp = result; rp; rp = rp->ai_next) {
 		sock = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-		if (sock < 0)
+		if (sock < 0) {
+			saved_errno = errno;
 			continue;
+		}
 		if (connect_with_timeout(sock, rp->ai_addr, rp->ai_addrlen) == 0)
 			break;
 		saved_errno = errno;
@@ -540,16 +597,26 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 	if (sock < 0) {
 		if (saved_errno == ETIMEDOUT)
 			fprintf(stderr, "error: connection timed out after %d seconds\n", timeout_sec);
-		else
-			fprintf(stderr, "error: failed to connect to %s:%s\n", host, port);
+		else {
+			fprintf(stderr, "error: failed to connect to ");
+			fprint_sanitized(stderr, host);
+			fputc(':', stderr);
+			fprint_sanitized(stderr, port);
+			fputc('\n', stderr);
+		}
 		free(lookup);
 		return -1;
 	}
 
 	tv.tv_sec = timeout_sec;
 	tv.tv_usec = 0;
-	setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv));
-	setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv));
+	if (setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) < 0 ||
+	    setsockopt(sock, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof(tv)) < 0) {
+		fprintf(stderr, "error: failed to set socket timeout\n");
+		close(sock);
+		free(lookup);
+		return -1;
+	}
 
 	if (is_ssl) {
 		ctx = SSL_CTX_new(TLS_client_method());
@@ -588,8 +655,14 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 			return -1;
 		}
 
-		SSL_set_fd(ssl, sock);
-		if (!is_ip && SSL_set_tlsext_host_name(ssl, lookup_host) != 1) {
+		if (SSL_set_fd(ssl, sock) != 1) {
+			fprintf(stderr, "error: SSL_set_fd failed\n");
+			SSL_free(ssl);
+			close(sock);
+			free(lookup);
+			return -1;
+		}
+		if (!is_ip && SSL_set_tlsext_host_name(ssl, server_name) != 1) {
 			fprintf(stderr, "error: failed to set TLS server name\n");
 			SSL_free(ssl);
 			close(sock);
@@ -604,7 +677,7 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 			if (is_ip)
 				ok = X509_VERIFY_PARAM_set1_ip_asc(param, lookup_host);
 			else
-				ok = SSL_set1_host(ssl, lookup_host);
+				ok = SSL_set1_host(ssl, server_name);
 			if (!ok) {
 				fprintf(stderr, "error: failed to configure certificate verification\n");
 				SSL_free(ssl);
@@ -617,9 +690,15 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 		if (SSL_connect(ssl) != 1) {
 			unsigned long err = ERR_get_error();
 			const char *reason = err ? ERR_reason_error_string(err) : NULL;
+			long verify = SSL_get_verify_result(ssl);
 
-			fprintf(stderr, "error: SSL handshake failed%s%s\n",
-				reason ? ": " : "", reason ? reason : "");
+			fprintf(stderr, "error: TLS handshake failed");
+			if (reason)
+				fprintf(stderr, ": %s", reason);
+			if (verify != X509_V_OK)
+				fprintf(stderr, " (certificate: %s)",
+					X509_verify_cert_error_string(verify));
+			fputc('\n', stderr);
 			SSL_free(ssl);
 			close(sock);
 			free(lookup);
@@ -632,26 +711,30 @@ connect_host(const char *host, const char *port, int is_ssl, SSL **ssl_out)
 	return sock;
 }
 
+#define REQUEST_FORMAT \
+	"GET %s HTTP/1.1\r\n" \
+	"Host: %s\r\n" \
+	"User-Agent: %s\r\n" \
+	"Accept: */*\r\n" \
+	"Accept-Encoding: identity\r\n" \
+	"Connection: close\r\n" \
+	"\r\n"
+
 static int
 send_request(int sock, SSL *ssl, const char *host_header, const char *path)
 {
-	const char *fmt =
-		"GET %s HTTP/1.1\r\n"
-		"Host: %s\r\n"
-		"User-Agent: %s\r\n"
-		"Connection: close\r\n"
-		"\r\n";
 	char *buf;
 	int len, total, n;
 	int rc = 0;
 
-	len = snprintf(NULL, 0, fmt, path, host_header, useragent);
+	len = snprintf(NULL, 0, REQUEST_FORMAT, path, host_header, useragent);
 	if (len < 0)
 		return -1;
 	buf = malloc((size_t)len + 1);
 	if (!buf)
 		return -1;
-	snprintf(buf, (size_t)len + 1, fmt, path, host_header, useragent);
+	snprintf(buf, (size_t)len + 1, REQUEST_FORMAT, path, host_header,
+		 useragent);
 
 	total = 0;
 	while (total < len) {
@@ -660,8 +743,18 @@ send_request(int sock, SSL *ssl, const char *host_header, const char *path)
 			if (n <= 0) {
 				int err = SSL_get_error(ssl, n);
 
+				if (err == SSL_ERROR_WANT_READ ||
+				    err == SSL_ERROR_WANT_WRITE) {
+					rc = -2;
+					break;
+				}
 				if (err == SSL_ERROR_SYSCALL && errno == EINTR)
 					continue;
+				if (err == SSL_ERROR_SYSCALL &&
+				    (errno == EAGAIN || errno == EWOULDBLOCK)) {
+					rc = -2;
+					break;
+				}
 				rc = -1;
 				break;
 			}
@@ -669,6 +762,10 @@ send_request(int sock, SSL *ssl, const char *host_header, const char *path)
 			n = (int)send(sock, buf + total, (size_t)(len - total), 0);
 			if (n < 0 && errno == EINTR)
 				continue;
+			if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+				rc = -2;
+				break;
+			}
 			if (n <= 0) {
 				rc = -1;
 				break;
@@ -801,6 +898,10 @@ stream_read_line(stream_reader *r, char *line, size_t cap)
 
 		if (n <= 0)
 			return -1;
+		if (c == '\0') {
+			errno = EPROTO;
+			return -1;
+		}
 		if (c == '\n')
 			break;
 		if (i + 1 >= cap) {
@@ -815,32 +916,81 @@ stream_read_line(stream_reader *r, char *line, size_t cap)
 	return 0;
 }
 
+/*
+ * Inspect Transfer-Encoding.  Returns:
+ *   0  header absent; Content-Length may be used
+ *   1  final transfer coding is chunked; decode the body
+ *   2  transfer coding present but not chunked; read until EOF
+ *  -1  chunked is present but not the final coding (unsupported)
+ */
 static int
-header_is_chunked(const char *header)
+header_transfer_encoding(const char *header)
 {
 	const char *line = header;
+	int seen_header = 0;
+	int seen_token = 0;
+	int seen_chunked = 0;
+	int last_chunked = 0;
 
 	while (*line) {
 		const char *nl = strchr(line, '\n');
 		const char *hdr;
 		const char *end;
-		const char *q;
+		const char *p;
 
 		if (!nl)
 			break;
 		hdr = nl + 1;
+		if (strncasecmp(hdr, "Transfer-Encoding:", 18) != 0) {
+			line = hdr;
+			continue;
+		}
+		seen_header = 1;
 		end = strpbrk(hdr, "\r\n");
 		if (!end)
 			end = hdr + strlen(hdr);
-		if (strncasecmp(hdr, "Transfer-Encoding:", 18) == 0) {
-			for (q = hdr + 18; q + 7 <= end; q++) {
-				if (strncasecmp(q, "chunked", 7) == 0)
-					return 1;
+		p = hdr + 18;
+		while (p < end) {
+			const char *tok_start;
+			const char *tok_end;
+			const char *comma;
+			const char *semi;
+
+			while (p < end && (*p == ' ' || *p == '\t' || *p == ','))
+				p++;
+			if (p >= end)
+				break;
+			tok_start = p;
+			comma = memchr(p, ',', (size_t)(end - p));
+			tok_end = comma ? comma : end;
+			semi = memchr(tok_start, ';', (size_t)(tok_end - tok_start));
+			if (semi)
+				tok_end = semi;
+			while (tok_end > tok_start &&
+			       (tok_end[-1] == ' ' || tok_end[-1] == '\t'))
+				tok_end--;
+			if (tok_end > tok_start) {
+				seen_token = 1;
+				if ((size_t)(tok_end - tok_start) == 7 &&
+				    strncasecmp(tok_start, "chunked", 7) == 0) {
+					seen_chunked = 1;
+					last_chunked = 1;
+				} else {
+					last_chunked = 0;
+				}
 			}
+			p = comma ? comma + 1 : end;
 		}
 		line = hdr;
 	}
-	return 0;
+
+	if (!seen_token)
+		return seen_header ? -1 : 0;
+	if (last_chunked)
+		return 1;
+	if (seen_chunked)
+		return -1;
+	return 2;
 }
 
 /*
@@ -929,6 +1079,18 @@ write_plain_body(stream_reader *r, size_t limit, int have_limit)
 }
 
 static int
+hex_value(unsigned char c)
+{
+	if (c >= '0' && c <= '9')
+		return c - '0';
+	if (c >= 'a' && c <= 'f')
+		return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F')
+		return c - 'A' + 10;
+	return -1;
+}
+
+static int
 write_chunked_body(stream_reader *r)
 {
 	char line[BUF_SIZE];
@@ -944,30 +1106,38 @@ write_chunked_body(stream_reader *r)
 		p = line;
 		while (*p == ' ' || *p == '\t')
 			p++;
-		if (!isxdigit((unsigned char)*p))
+		if (hex_value((unsigned char)*p) < 0)
 			return BODY_READ_ERR;
-		while (isxdigit((unsigned char)*p)) {
-			int digit;
+		for (;;) {
+			int digit = hex_value((unsigned char)*p);
 
-			if (*p >= '0' && *p <= '9')
-				digit = *p - '0';
-			else if (*p >= 'a' && *p <= 'f')
-				digit = *p - 'a' + 10;
-			else
-				digit = *p - 'A' + 10;
+			if (digit < 0)
+				break;
 			if (size > (SIZE_MAX - (size_t)digit) / 16)
 				return BODY_READ_ERR;
 			size = size * 16 + (size_t)digit;
 			p++;
 		}
+		while (*p == ' ' || *p == '\t')
+			p++;
+		if (*p != '\0' && *p != ';')
+			return BODY_READ_ERR;
 
 		if (size == 0) {
+			size_t trailer_bytes = 0;
+
 			/* Consume trailers through the final blank line. */
 			for (;;) {
+				size_t line_len;
+
 				if (stream_read_line(r, line, sizeof(line)) < 0)
 					return BODY_OK;
 				if (line[0] == '\0')
 					return BODY_OK;
+				line_len = strlen(line);
+				if (trailer_bytes > MAX_HEADER_SIZE - line_len)
+					return BODY_READ_ERR;
+				trailer_bytes += line_len;
 			}
 		}
 
@@ -984,67 +1154,85 @@ write_chunked_body(stream_reader *r)
 		}
 
 		/* Consume the CRLF that terminates the chunk data. */
-		if (stream_read_line(r, line, sizeof(line)) < 0)
+		if (stream_read_line(r, line, sizeof(line)) < 0 || line[0] != '\0')
 			return BODY_READ_ERR;
 	}
 }
 
+/*
+ * Parse a status line.  Returns 0 on success, -1 on a malformed line and -2
+ * when a Location header could not be allocated.
+ */
 static int
 parse_status(const char *buf, int *code, char **location)
 {
 	const char *p;
-	char *end;
-	long c;
+	int c;
 
 	if (strncmp(buf, "HTTP/", 5) != 0)
 		return -1;
 
 	p = buf + 5;
-	while (*p && *p != ' ')
-		p++;
-	if (!*p)
+	if (!isdigit((unsigned char)p[0]))
+		return -1;
+	p++;
+	if (*p != '.')
+		return -1;
+	p++;
+	if (!isdigit((unsigned char)p[0]))
+		return -1;
+	p++;
+	if (*p != ' ')
 		return -1;
 	p++;
 
-	c = strtol(p, &end, 10);
-	if (end == p || c < 100 || c > 999)
+	if (!isdigit((unsigned char)p[0]) ||
+	    !isdigit((unsigned char)p[1]) ||
+	    !isdigit((unsigned char)p[2]))
 		return -1;
-	*code = (int)c;
+	if (p[3] != '\0' && p[3] != ' ' && p[3] != '\r' && p[3] != '\n')
+		return -1;
+
+	c = (p[0] - '0') * 100 + (p[1] - '0') * 10 + (p[2] - '0');
+	if (c < 100)
+		return -1;
+	*code = c;
 
 	if (location) {
 		*location = NULL;
-		if (*code >= 300 && *code < 400) {
+		if (c >= 300 && c < 400) {
 			const char *line = buf;
 
 			while (*line) {
 				const char *nl = strchr(line, '\n');
 				const char *hdr;
+				const char *end;
+				const char *val;
+				size_t len;
 
 				if (!nl)
 					break;
 				hdr = nl + 1;
-				if (strncasecmp(hdr, "Location:", 9) == 0) {
-					const char *val_end;
-					size_t len;
-
-					hdr += 9;
-					while (*hdr == ' ' || *hdr == '\t')
-						hdr++;
-					val_end = hdr;
-					while (*val_end && *val_end != '\r' && *val_end != '\n')
-						val_end++;
-					while (val_end > hdr &&
-					       (val_end[-1] == ' ' || val_end[-1] == '\t'))
-						val_end--;
-					len = (size_t)(val_end - hdr);
-					*location = malloc(len + 1);
-					if (*location) {
-						memcpy(*location, hdr, len);
-						(*location)[len] = '\0';
-					}
-					break;
+				if (strncasecmp(hdr, "Location:", 9) != 0) {
+					line = hdr;
+					continue;
 				}
-				line = hdr;
+				end = strpbrk(hdr, "\r\n");
+				if (!end)
+					end = hdr + strlen(hdr);
+				val = hdr + 9;
+				while (val < end && (*val == ' ' || *val == '\t'))
+					val++;
+				while (end > val &&
+				       (end[-1] == ' ' || end[-1] == '\t'))
+					end--;
+				len = (size_t)(end - val);
+				*location = malloc(len + 1);
+				if (!*location)
+					return -2;
+				memcpy(*location, val, len);
+				(*location)[len] = '\0';
+				break;
 			}
 		}
 	}
@@ -1065,6 +1253,13 @@ find_header_end(const char *buf, size_t len)
 			return (int)(i + 4);
 	}
 	return -1;
+}
+
+static int
+is_redirect_code(int code)
+{
+	return code == 301 || code == 302 || code == 303 ||
+	       code == 307 || code == 308;
 }
 
 /*
@@ -1090,6 +1285,7 @@ do_request(const url_parts *u, char **location_out)
 	size_t content_length = 0;
 	char *location = NULL;
 	int header_end = -1;
+	int interim = 0;
 	ssize_t n;
 	int rc = -1;
 
@@ -1100,19 +1296,79 @@ do_request(const url_parts *u, char **location_out)
 		goto done;
 
 	host_header = build_host_header(u);
-	if (!host_header)
+	if (!host_header) {
+		fprintf(stderr, "error: out of memory\n");
 		goto done;
-	if (send_request(sock, ssl, host_header, u->path) < 0) {
-		fprintf(stderr, "error: failed to send request\n");
-		goto done;
+	}
+	{
+		int snd_rc = send_request(sock, ssl, host_header, u->path);
+
+		if (snd_rc != 0) {
+			if (snd_rc == -2)
+				fprintf(stderr, "error: timeout after %d seconds\n", timeout_sec);
+			else
+				fprintf(stderr, "error: failed to send request\n");
+			goto done;
+		}
 	}
 
 	header_cap = BUF_SIZE;
 	header = malloc(header_cap);
-	if (!header)
+	if (!header) {
+		fprintf(stderr, "error: out of memory\n");
 		goto done;
+	}
 
 	for (;;) {
+		header_end = find_header_end(header, header_len);
+		if (header_end >= 0) {
+			int parse_rc;
+			char saved;
+
+			if ((size_t)header_end > MAX_HEADER_SIZE) {
+				fprintf(stderr, "error: response headers too large\n");
+				goto done;
+			}
+			if (memchr(header, '\0', (size_t)header_end) != NULL) {
+				fprintf(stderr, "error: invalid response header\n");
+				goto done;
+			}
+
+			saved = header[header_end];
+			header[header_end] = '\0';
+			parse_rc = parse_status(header, &code, NULL);
+			header[header_end] = saved;
+
+			if (parse_rc < 0) {
+				fprintf(stderr, "error: failed to parse HTTP status\n");
+				goto done;
+			}
+
+			/* Informational responses precede the final response. */
+			if (code >= 100 && code < 200) {
+				if (code == 101) {
+					fprintf(stderr, "error: unexpected protocol switch\n");
+					goto done;
+				}
+				if (++interim > MAX_INTERIM_RESPONSES) {
+					fprintf(stderr, "error: too many informational responses\n");
+					goto done;
+				}
+				memmove(header, header + header_end,
+					header_len - (size_t)header_end);
+				header_len -= (size_t)header_end;
+				header[header_len] = '\0';
+				continue;
+			}
+			break;
+		}
+
+		if (header_len > MAX_HEADER_SIZE) {
+			fprintf(stderr, "error: response headers too large\n");
+			goto done;
+		}
+
+		errno = 0;
 		n = read_some(sock, ssl, buf, sizeof(buf));
 		if (n < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
@@ -1131,21 +1387,16 @@ do_request(const url_parts *u, char **location_out)
 			while (header_len + (size_t)n + 1 > new_cap)
 				new_cap *= 2;
 			tmp = realloc(header, new_cap);
-			if (!tmp)
+			if (!tmp) {
+				fprintf(stderr, "error: out of memory\n");
 				goto done;
+			}
 			header = tmp;
 			header_cap = new_cap;
 		}
 		memcpy(header + header_len, buf, (size_t)n);
 		header_len += (size_t)n;
 		header[header_len] = '\0';
-		header_end = find_header_end(header, header_len);
-		if (header_end >= 0)
-			break;
-		if (header_len > MAX_HEADER_SIZE) {
-			fprintf(stderr, "error: response headers too large\n");
-			goto done;
-		}
 	}
 
 	if (header_len == 0) {
@@ -1160,32 +1411,58 @@ do_request(const url_parts *u, char **location_out)
 	{
 		char saved = header[header_end];
 		int parse_rc;
-		int length_rc;
+		int te = 0;
+		int length_rc = 0;
 
 		header[header_end] = '\0';
 		parse_rc = parse_status(header, &code, &location);
-		chunked = header_is_chunked(header);
-		length_rc = chunked ? 0 :
-			header_content_length(header, &content_length);
+		if (parse_rc == 0) {
+			te = header_transfer_encoding(header);
+			if (te == 0)
+				length_rc = header_content_length(header,
+								  &content_length);
+		}
 		header[header_end] = saved;
 
+		if (parse_rc == -2) {
+			fprintf(stderr, "error: out of memory\n");
+			goto done;
+		}
 		if (parse_rc < 0) {
 			fprintf(stderr, "error: failed to parse HTTP status\n");
+			goto done;
+		}
+		if (te < 0) {
+			fprintf(stderr, "error: unsupported Transfer-Encoding\n");
 			goto done;
 		}
 		if (length_rc < 0) {
 			fprintf(stderr, "error: invalid Content-Length header\n");
 			goto done;
 		}
-		have_content_length = length_rc;
-		if (code == 204 || code == 304) {
+
+		if (te == 1) {
+			chunked = 1;
+			have_content_length = 0;
+		} else if (te == 2) {
+			chunked = 0;
+			have_content_length = 0;
+		} else {
+			chunked = 0;
+			have_content_length = length_rc;
+		}
+		if (code == 204 || code == 205 || code == 304) {
 			chunked = 0;
 			have_content_length = 1;
 			content_length = 0;
 		}
 	}
 
-	if (code >= 300 && code < 400 && location && location[0] != '\0') {
+	if (is_redirect_code(code)) {
+		if (!location || location[0] == '\0') {
+			fprintf(stderr, "error: redirect response without a valid Location header\n");
+			goto done;
+		}
 		*location_out = location;
 		location = NULL;
 		rc = 2;
@@ -1218,6 +1495,11 @@ do_request(const url_parts *u, char **location_out)
 		}
 	}
 
+	if (fflush(stdout) != 0) {
+		fprintf(stderr, "error: failed to write to stdout\n");
+		goto done;
+	}
+
 	if (code >= 200 && code < 300) {
 		rc = 0;
 	} else {
@@ -1246,6 +1528,7 @@ fetch_url(const char *start_url)
 		fprintf(stderr, "error: out of memory\n");
 		return -1;
 	}
+	normalize_url_path(current);
 
 	for (;;) {
 		url_parts u;
@@ -1254,7 +1537,9 @@ fetch_url(const char *start_url)
 		int rc;
 
 		if (parse_url(current, &u) < 0) {
-			fprintf(stderr, "error: invalid URL: %s\n", current);
+			fprintf(stderr, "error: invalid URL: ");
+			fprint_sanitized(stderr, current);
+			fputc('\n', stderr);
 			free(current);
 			return -1;
 		}
@@ -1310,6 +1595,10 @@ main(int argc, char *argv[])
 	int scheme_ssl;
 	size_t scheme_len;
 
+	/* A closed pipe or a peer that resets the connection must not kill the
+	 * process before errors can be reported and resources released. */
+	signal(SIGPIPE, SIG_IGN);
+
 	while ((opt = getopt(argc, argv, "A:kn:t:hV")) != -1) {
 		switch (opt) {
 		case 'A':
@@ -1326,7 +1615,9 @@ main(int argc, char *argv[])
 			long v;
 
 			if (parse_int_arg(optarg, 0, INT_MAX, &v) < 0) {
-				fprintf(stderr, "error: invalid redirect limit: %s\n", optarg);
+				fprintf(stderr, "error: invalid redirect limit: ");
+				fprint_sanitized(stderr, optarg);
+				fputc('\n', stderr);
 				return 1;
 			}
 			max_redirs = (int)v;
@@ -1336,7 +1627,9 @@ main(int argc, char *argv[])
 			long v;
 
 			if (parse_int_arg(optarg, 1, INT_MAX, &v) < 0) {
-				fprintf(stderr, "error: invalid timeout: %s\n", optarg);
+				fprintf(stderr, "error: invalid timeout: ");
+				fprint_sanitized(stderr, optarg);
+				fputc('\n', stderr);
 				return 1;
 			}
 			timeout_sec = (int)v;

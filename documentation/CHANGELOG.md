@@ -1,5 +1,46 @@
 # Changelog
 
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+
+## Unreleased
+
+### Fixed
+- Handle informational (`1xx`) responses and reject unexpected protocol
+  switches (`101`) instead of treating the first response as final.
+- Follow only the standard redirect status codes (`301`, `302`, `303`, `307`
+  and `308`); no longer treat `300`, `304`, `305` or `306` as redirects.
+- Treat `205 Reset Content` responses as bodyless, like `204` and `304`.
+- Parse the HTTP status line strictly, including the version and the exact
+  three-digit status code.
+- Parse `Transfer-Encoding` as a token list and reject messages where
+  `chunked` is not the final coding. `Content-Length` is ignored when a
+  transfer coding is present, as required by HTTP.
+- Validate chunk-size syntax and require the empty line after each chunk.
+- Remove dot segments from the initial URL and from absolute redirect
+  targets, not just from relative redirects.
+- Use the last `@` when separating URL userinfo from the host, so passwords
+  containing a literal `@` do not corrupt the host.
+- Reject NUL bytes in response headers and chunked framing, and cap the size
+  of completed header blocks, including after informational responses.
+- Sanitize server-controlled URLs and host names in diagnostics so terminal
+  control sequences cannot be injected through a redirect.
+- Strip a trailing dot from DNS names when selecting the TLS server name and
+  verifying the peer certificate.
+- Fail cleanly if socket timeouts cannot be applied instead of potentially
+  blocking forever.
+
+### Changed
+- Send `Accept: */*` and `Accept-Encoding: identity` with requests.
+- Ignore `SIGPIPE` so a closed pipe or reset connection is reported as an
+  error instead of terminating the process abruptly.
+- Check the final `fflush(stdout)` result so write failures affect the exit
+  status.
+- Report certificate verification details when a TLS handshake fails, and
+  check the return value of `SSL_set_fd`.
+- Limit the number of consecutive informational responses.
+
 ## 0.1.6 – 2026‑11‑09
 - Reject control characters and CR/LF in the `-A` User-Agent value, and in
   URL hosts, to prevent request-header injection.

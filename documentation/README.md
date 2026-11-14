@@ -23,7 +23,7 @@ make
 sudo make install
 ```
 
-For more detailed compilation instructions, see [documentation/BUILDING.md](documentation/BUILDING.md).
+For more detailed compilation instructions, see [BUILDING.md](BUILDING.md).
 
 ### Basic Usage
 
@@ -37,7 +37,8 @@ rurl https://example.com
 rurl https://api.github.com/users/ReubenPercival | jq .
 ```
 
-For more usage patterns and flag options, see [documentation/USAGE.md](documentation/USAGE.md).
+For more usage patterns, behavior, exit status, and flag options, see
+[USAGE.md](USAGE.md).
 
 ---
 
