@@ -61,6 +61,19 @@ rurl https://api.github.com/users/ReubenPercival | jq .
 rurl -A "MyCustomCrawler/1.0" -t 5 -n 3 https://example.com
 ```
 
+### Combining Flags
+
+Multiple options can be supplied in a single invocation. Both the separate and
+clustered short-option forms are supported:
+
+```sh
+# Separate flags: user agent, timeout, and redirect limit together
+rurl -A "Mozilla/5.0" -t 5 -n 3 https://example.com
+
+# Clustered short flags: -k (insecure) and -t 5 combined
+rurl -kt 5 https://example.com
+```
+
 ---
 
 ## Build Prerequisites
