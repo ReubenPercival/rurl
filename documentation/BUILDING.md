@@ -7,7 +7,7 @@
 - **C compiler**: `clang` (the project's standard compiler). GCC is not
   supported as a build target, though the source is plain C11.
 - **OpenSSL development headers** (e.g., `libssl-dev` on Debian/Ubuntu, `openssl-dev` on Alpine Linux)
-- **POSIX environment** (Linux or macOS)
+- **POSIX environment** (Linux or macOS THIS IS NOT WINDOWS )
 
 ## Compiling
 
