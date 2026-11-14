@@ -9,7 +9,7 @@ Thank you for your interest in contributing! We welcome bug fixes, documentation
    ```sh
    git checkout -b feature/my-new-feature
    ```
-3. **Make your changes** in `rurl.c` or the documentation files. Adhere to the existing code style.
+3. **Make your changes** in the relevant `src/` module or the documentation files. Adhere to the existing code style.
 4. **Compile and test** to verify your changes work:
    ```sh
    make
@@ -27,7 +27,7 @@ Thank you for your interest in contributing! We welcome bug fixes, documentation
 
 ## Code Style Guidelines
 
-- **Formatting**: Indent with standard tabs (width 8) matching the existing `rurl.c` layout.
+- **Formatting**: Indent with standard tabs (width 8) matching the existing `src/` layout.
 - **Simplicity**: Keep functions focused, clean, and under 100 lines where practical.
 - **Safety**: Ensure you do not introduce memory leaks (e.g. always cleanup buffers and free structures on all error paths).
 - **Compiler**: Clang is the project standard and the default `CC` in the
@@ -37,6 +37,23 @@ Thank you for your interest in contributing! We welcome bug fixes, documentation
 - **Error paths**: Free every allocation and close every socket/SSL object on
   all exits. Prefer a single cleanup label in functions that acquire multiple
   resources.
+
+## Source Layout
+
+| File | Responsibility |
+| :--- | :--- |
+| `src/main.c` | Option parsing, usage/version output, and global configuration. |
+| `src/rurl.h` | Shared constants, the `url_parts` and `rurl_config` types, and module declarations. |
+| `src/util.c` | Allocation helpers, integer parsing, header-value validation, and sanitized diagnostics. |
+| `src/url.c` | URL parsing, dot-segment normalization, redirect resolution, and `Host` header construction. |
+| `src/net.c` | Name resolution, non-blocking connect with timeout, TLS setup, and raw request/response I/O. |
+| `src/http.c` | Request orchestration and redirect handling. |
+| `src/response.c` | HTTP status/header parsing, response framing, and body streaming. |
+| `src/http_internal.h` | Private interfaces shared by the HTTP transaction and response modules. |
+
+Keep shared module interfaces in `src/rurl.h`, put private cross-module
+interfaces in `src/http_internal.h`, and make single-module helpers `static`
+to the file that uses them.
 
 ## Testing Changes
 
@@ -54,7 +71,9 @@ For memory and undefined-behavior checks:
 
 ```sh
 clang -std=c11 -O1 -g -fsanitize=address,undefined \
-    -fno-omit-frame-pointer -o rurl-asan rurl.c -lssl -lcrypto
+    -fno-omit-frame-pointer -Isrc -o rurl-asan \
+    src/main.c src/util.c src/url.c src/net.c src/http.c src/response.c \
+    -lssl -lcrypto
 ./rurl-asan https://example.com
 ```
 

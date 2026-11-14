@@ -1,6 +1,6 @@
 # Building rurl
 
-`rurl` is a single-file C utility with zero dependencies outside of OpenSSL.
+`rurl` is a small C utility split into focused source modules under `src/`, with zero dependencies outside of OpenSSL.
 
 ## Prerequisites
 
@@ -32,7 +32,9 @@ sudo make install
 If you prefer to compile manually:
 
 ```sh
-clang -Wall -Wextra -Os -o rurl rurl.c -lssl -lcrypto
+clang -Wall -Wextra -Os -Isrc -o rurl \
+    src/main.c src/util.c src/url.c src/net.c src/http.c src/response.c \
+    -lssl -lcrypto
 ```
 
 ## Troubleshooting Build Failures

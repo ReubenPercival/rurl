@@ -2,7 +2,7 @@
 
 ![License: EUPL v1.2](https://img.shields.io/badge/License-EUPL_1.2-blue.svg)
 
-`rurl` is a tiny, self-contained command-line utility that fetches a URL and writes the raw response body to *stdout*. It is implemented directly using raw POSIX sockets and native OpenSSL functions—avoiding heavy dependency footprints like `libcurl`.
+`rurl` is a tiny command-line utility that fetches a URL and writes the raw response body to *stdout*. It is implemented directly using raw POSIX sockets and native OpenSSL functions—avoiding heavy dependency footprints like `libcurl`. The source is split into focused modules under [`src/`](src/).
 
 ---
 
@@ -27,6 +27,19 @@ sudo make install
 ```
 
 The binary is installed to **/usr/local/bin/rurl** by default.
+
+### Source Layout
+
+| File | Responsibility |
+| :--- | :--- |
+| `src/main.c` | Command-line option parsing, usage output, and program configuration. |
+| `src/rurl.h` | Shared constants, configuration, URL types, and module interfaces. |
+| `src/http_internal.h` | Private interfaces shared by the HTTP transaction and response modules. |
+| `src/util.c` | String allocation helpers, argument parsing, and safe diagnostic output. |
+| `src/url.c` | URL parsing, path normalization, redirect resolution, and `Host` header construction. |
+| `src/net.c` | DNS resolution, socket connections, timeouts, TLS setup, and request/response I/O. |
+| `src/http.c` | Request orchestration and redirect handling. |
+| `src/response.c` | HTTP status/header parsing, response framing, and body streaming. |
 
 ---
 

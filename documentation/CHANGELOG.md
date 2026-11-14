@@ -32,6 +32,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   blocking forever.
 
 ### Changed
+- Split the single-file implementation into focused modules under `src/`
+  (`main.c`, `util.c`, `url.c`, `net.c`, `http.c`, and `response.c`); there is
+  no behavioral change.
 - Send `Accept: */*` and `Accept-Encoding: identity` with requests.
 - Ignore `SIGPIPE` so a closed pipe or reset connection is reported as an
   error instead of terminating the process abruptly.
