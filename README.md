@@ -2,7 +2,7 @@
 
 ![License: EUPL v1.2](https://img.shields.io/badge/License-EUPL_1.2-blue.svg)
 
-`rurl` is a tiny command-line utility that fetches a URL and writes the raw response body to *stdout*. It is implemented directly using raw POSIX sockets and native OpenSSL functions—avoiding heavy dependency footprints like `libcurl`. The source is split into focused modules under [`src/`](src/).
+`rurl` is a tiny command-line utility that fetches a URL and writes the raw response body to *stdout*. It is implemented directly using raw POSIX sockets and native OpenSSL functions—avoiding heavy dependency footprints like `libcurl`. The source is split into focused modules under [`src/`](src/). As a calm reminder DO NOT USE "example.com" They explicitly warn against this " This domain is for use in documentation examples without needing permission. This is not a service; avoid relying on it for testing and monitoring purposes." 
 
 ---
 
@@ -63,7 +63,7 @@ rurl [-A USERAGENT] [-k] [-n MAXREDIRS] [-t TIMEOUT] URL
 ### Practical Examples
 
 ```sh
-# Perform a simple GET request
+# Perform a simple GET request 
 rurl https://example.com
 
 # Pipeline API payloads to json processing utilities
